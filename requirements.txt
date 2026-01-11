@@ -5,5 +5,5 @@ langchain-community
 python-docx
 docx2txt
 pypdf
-supabase
+
 
