@@ -8,8 +8,8 @@ supabase = create_client(
 )
 
 def create_session(session_id):
-    # Insert session only once; ignore duplicates
-    supabase.table("sessions").insert(
+    # upsert is REQUIRED because Streamlit reruns the script
+    supabase.table("sessions").upsert(
         {
             "session_id": session_id,
             "created_at": datetime.utcnow().isoformat()
