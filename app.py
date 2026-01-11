@@ -1,22 +1,18 @@
-import streamlit as st
+import os
 import tempfile
+import streamlit as st
 
 from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate
 
-from resume_logic import (
-    extract_resume_text,
-    extract_experience,
-    total_experience_months,
-    format_ym
-)
+from resume_logic import extract_resume_text
+
 
 # -----------------------------
-# Page config
+# Page setup
 # -----------------------------
 st.set_page_config(page_title="Resume Chatbot", layout="centered")
 st.title("📄 Resume Chatbot")
-
 st.write("Upload your resume and chat with it")
 
 # -----------------------------
@@ -30,30 +26,31 @@ if uploaded_file:
         resume_path = tmp.name
 
     resume_text = extract_resume_text(resume_path)
-    experiences = extract_experience(resume_text)
-    total_months = total_experience_months(experiences)
-
-    st.success("Resume processed successfully!")
+    st.success("Resume uploaded successfully!")
 
     # -----------------------------
-    # Initialize LLM
+    # Initialize Groq LLM
     # -----------------------------
     llm = ChatGroq(
         model="llama-3.1-8b-instant",
-        temperature=0.2
+        temperature=0.2,
+        api_key=os.environ.get("GROQ_API_KEY")
     )
 
     prompt = ChatPromptTemplate.from_template(
         """
 You are a professional resume analysis assistant.
 
-Answer ONLY using the resume content below.
-If information is not present, say so clearly.
+RULES:
+- Answer ONLY using the resume content below
+- Do NOT guess or hallucinate
+- If information is missing, say "Not mentioned in the resume"
+- Calculate experience durations carefully when asked
 
 Resume:
 {context}
 
-Question:
+User Question:
 {question}
 
 Answer:
@@ -77,22 +74,16 @@ Answer:
     if user_input:
         st.chat_message("user").markdown(user_input)
 
-        q = user_input.lower()
+        response = llm.invoke(
+            prompt.format_prompt(
+                context=resume_text,
+                question=user_input
+            ).to_messages()
+        )
 
-        # Deterministic experience answer
-        if "experience" in q or "month" in q or "year" in q:
-            answer = f"Total professional experience is {format_ym(total_months)}."
-        else:
-            response = llm.invoke(
-                prompt.format_prompt(
-                    context=resume_text,
-                    question=user_input
-                ).to_messages()
-            )
-            answer = response.content
+        answer = response.content
 
         st.chat_message("assistant").markdown(answer)
 
         st.session_state.messages.append({"role": "user", "content": user_input})
         st.session_state.messages.append({"role": "assistant", "content": answer})
-
