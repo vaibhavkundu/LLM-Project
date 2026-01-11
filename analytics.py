@@ -7,16 +7,6 @@ supabase = create_client(
     os.environ["SUPABASE_ANON_KEY"]
 )
 
-def create_session(session_id):
-    # upsert is REQUIRED because Streamlit reruns the script
-    supabase.table("sessions").upsert(
-        {
-            "session_id": session_id,
-            "created_at": datetime.utcnow().isoformat()
-        },
-        on_conflict="session_id"
-    ).execute()
-
 def log_resume_upload(session_id, file_type):
     supabase.table("resume_uploads").insert(
         {
