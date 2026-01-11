@@ -1,20 +1,15 @@
 import os
 import uuid
 import tempfile
-from datetime import datetime
 
 import streamlit as st
-import pandas as pd
 
 from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate
 
 from resume_logic import extract_resume_text
-from analytics import (
-    create_session,
-    log_resume_upload,
-    log_chat
-)
+from analytics import log_resume_upload, log_chat
+
 
 # =====================================================
 # PAGE CONFIG
@@ -26,6 +21,7 @@ st.set_page_config(
 
 st.title("📄 Resume Chatbot")
 st.write("Upload your resume (PDF or Word) and chat with it.")
+
 
 # =====================================================
 # SESSION INITIALIZATION
@@ -39,8 +35,6 @@ if "resume_uploaded" not in st.session_state:
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# create session in Supabase (idempotent)
-create_session(st.session_state.session_id)
 
 # =====================================================
 # FILE UPLOAD (PDF / DOCX)
@@ -67,7 +61,7 @@ if uploaded_file and not st.session_state.resume_uploaded:
 
     try:
         resume_text = extract_resume_text(resume_path)
-    except Exception as e:
+    except Exception:
         st.error("Failed to extract text from resume.")
         st.stop()
 
@@ -78,6 +72,7 @@ if uploaded_file and not st.session_state.resume_uploaded:
     st.session_state.resume_text = resume_text
     st.session_state.resume_uploaded = True
 
+    # 🔥 LOG RESUME UPLOAD (SUPABASE)
     log_resume_upload(
         session_id=st.session_state.session_id,
         file_type=suffix
@@ -85,8 +80,9 @@ if uploaded_file and not st.session_state.resume_uploaded:
 
     st.success("Resume uploaded successfully!")
 
+
 # =====================================================
-# CHATBOT (LLM-ONLY LOGIC)
+# CHATBOT (LLM ONLY)
 # =====================================================
 if st.session_state.get("resume_uploaded"):
     llm = ChatGroq(
@@ -103,7 +99,7 @@ RULES:
 - Answer ONLY using the resume content below
 - Do NOT hallucinate or guess
 - If information is missing, say "Not mentioned in the resume"
-- If asked about experience, calculate durations carefully from the resume text
+- Calculate experience carefully if asked
 
 Resume:
 {context}
@@ -115,7 +111,7 @@ Answer:
 """
     )
 
-    # show previous messages
+    # Show chat history
     for msg in st.session_state.messages:
         st.chat_message(msg["role"]).markdown(msg["content"])
 
@@ -139,54 +135,9 @@ Answer:
             {"role": "assistant", "content": answer}
         ])
 
-        # log chat to Supabase
+        # 🔥 LOG CHAT (SUPABASE)
         log_chat(
             session_id=st.session_state.session_id,
             user_msg=user_input,
             ai_msg=answer
         )
-
-# =====================================================
-# ADMIN ANALYTICS DASHBOARD (SUPABASE)
-# =====================================================
-st.sidebar.markdown("---")
-admin_mode = st.sidebar.checkbox("🔐 Admin Analytics")
-
-if admin_mode:
-    st.sidebar.markdown("### 📊 Analytics (Supabase)")
-
-    st.sidebar.info(
-        "All resume uploads and chats are persistently stored in Supabase.\n"
-        "Use Supabase dashboard for advanced filtering and queries."
-    )
-
-    st.sidebar.markdown("#### What is tracked:")
-    st.sidebar.markdown(
-        """
-- Unique sessions  
-- Resume uploads (PDF / DOCX)  
-- Every user question  
-- Every AI response  
-- Timestamps (UTC)  
-        """
-    )
-
-    st.sidebar.markdown("#### Recommended Queries (Supabase SQL):")
-    st.sidebar.code(
-        """
-select *
-from chat_logs
-where created_at::date between '2026-01-01' and '2026-01-31'
-order by created_at desc;
-        """,
-        language="sql"
-    )
-
-    st.sidebar.markdown("#### Tables:")
-    st.sidebar.markdown(
-        """
-- sessions  
-- resume_uploads  
-- chat_logs  
-        """
-    )
